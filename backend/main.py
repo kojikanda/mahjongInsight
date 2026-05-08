@@ -1,8 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import StreamingResponse
 from models import AnalyzeRequest, AnalyzeResponse
-from services.gemini_service import analyze_haipai, analyze_haipai_stream
+from services.gemini_service import (
+    analyze_haipai,
+    analyze_haipai_stream,
+    analyze_paifu_text,
+    analyze_paifu_text_stream,
+)
+from services.paifu_parser import extract_tactics_from_bytes
 from services.haipai_mock import get_mock_haipai
+
+# 対象プレイヤー名
+MY_NICKNAME = "__わんち__"
 
 # FastAPIインスタンス生成
 app = FastAPI()
@@ -40,3 +49,42 @@ async def analyze_stream(request: AnalyzeRequest) -> StreamingResponse:
     haipai_data = get_mock_haipai(request.game_id)
     generator = analyze_haipai_stream(haipai_data)
     return StreamingResponse(generator, media_type="text/plain")
+
+
+@app.post("/admin/uploadpaifu")
+async def upload_paifu(file: UploadFile = File(...)):
+    """
+    牌譜データアップロードAPI
+
+    Args:
+        file (UploadFile, optional): アップロードされたファイル
+
+    Returns:
+        dict: 解析結果を格納したディクショナリ
+    """
+
+    content = await file.read()
+    tactics_text = extract_tactics_from_bytes(content, my_nickname=MY_NICKNAME)
+    # print(tactics_text)
+    analysis = analyze_paifu_text(tactics_text)
+    return {"analysis": analysis}
+
+
+@app.post("/admin/uploadpaifu/stream")
+async def upload_paifu_stream(file: UploadFile = File(...)):
+    """
+    牌譜データアップロードAPI(ストリーミングレスポンス)
+
+    Args:
+        file (UploadFile, optional): アップロードされたファイル
+
+    Returns:
+        dict: 解析結果を格納したディクショナリ
+    """
+
+    content = await file.read()
+    tactics_text = extract_tactics_from_bytes(content, my_nickname=MY_NICKNAME)
+    # print(tactics_text)
+    return StreamingResponse(
+        analyze_paifu_text_stream(tactics_text), media_type="text/plain"
+    )
