@@ -53,9 +53,22 @@
 一覧に出ない場合は「Enter interpreter path...」→「Find...」で以下のパスを直接指定します。
 /Volumes/DATA/programing/development/mahjongInsight/backend/.venv/bin/python
 
+## ■ APIの呼び出し方
+
+下記のSwagger UIを使うか、コマンドを使うか、VSCode拡張機能のThunder Clinetを使う。
+
+Gemini APIをストリーミングレスポンスで使う場合はコマンドの方が良いので、以下のコマンドを実行する。
+
+```zsh
+curl -X POST http://localhost:8000/analyze/stream \
+-H "Content-Type: application/json" \
+-d '{"game_id": "test-001"}' \
+--no-buffer
+```
+
 # Fast APIに関すること
 
-## ■Swagger UI
+## ■ Swagger UI
 
 ブラウザで以下にアクセスすると、GUIでAPIを叩くことができる。
 

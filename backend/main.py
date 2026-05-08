@@ -1,6 +1,7 @@
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from models import AnalyzeRequest, AnalyzeResponse
-from services.gemini_service import analyze_haipai
+from services.gemini_service import analyze_haipai, analyze_haipai_stream
 from services.haipai_mock import get_mock_haipai
 
 # FastAPIインスタンス生成
@@ -22,3 +23,20 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     haipai_data = get_mock_haipai(request.game_id)
     analysis = analyze_haipai(haipai_data)
     return AnalyzeResponse(game_id=request.game_id, analysis=analysis)
+
+
+@app.post("/analyze/stream")
+async def analyze_stream(request: AnalyzeRequest) -> StreamingResponse:
+    """
+    牌譜解析API処理(ストリーミングレスポンス)
+
+    Args:
+        request (AnalyzeRequest): APIリクエスト
+
+    Returns:
+        StreamingResponse: APIレスポンス
+    """
+
+    haipai_data = get_mock_haipai(request.game_id)
+    generator = analyze_haipai_stream(haipai_data)
+    return StreamingResponse(generator, media_type="text/plain")
