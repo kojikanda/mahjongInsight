@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import StreamingResponse
 from models import AnalyzeRequest, AnalyzeResponse
+from pathlib import Path
 from services.gemini_service import (
     analyze_haipai,
     analyze_haipai_stream,
@@ -9,6 +10,9 @@ from services.gemini_service import (
 )
 from services.paifu_parser import extract_tactics_from_bytes
 from services.haipai_mock import get_mock_haipai
+
+# プロジェクトルート
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # 対象プレイヤー名
 MY_NICKNAME = "__わんち__"
@@ -65,8 +69,12 @@ async def upload_paifu(file: UploadFile = File(...)):
 
     content = await file.read()
     tactics_text = extract_tactics_from_bytes(content, my_nickname=MY_NICKNAME)
-    # print(tactics_text)
+
+    # for debug: 抽出した文字列データをファイルに出力
+    _output_str_to_text_file(tactics_text)
+
     analysis = analyze_paifu_text(tactics_text)
+    # analysis = "test"
     return {"analysis": analysis}
 
 
@@ -84,7 +92,16 @@ async def upload_paifu_stream(file: UploadFile = File(...)):
 
     content = await file.read()
     tactics_text = extract_tactics_from_bytes(content, my_nickname=MY_NICKNAME)
-    # print(tactics_text)
+
+    # # for debug: 抽出した文字列データをファイルに出力
+    # _output_str_to_text_file(tactics_text)
+
     return StreamingResponse(
         analyze_paifu_text_stream(tactics_text), media_type="text/plain"
     )
+
+
+def _output_str_to_text_file(text: str):
+    output_pass = PROJECT_ROOT / "docs" / "ref" / "paifu_compact.txt"
+    with open(output_pass, "w", encoding="utf-8") as f:
+        f.write(text)

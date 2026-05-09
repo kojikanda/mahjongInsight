@@ -4,8 +4,9 @@ import os
 from google import genai
 from dotenv import load_dotenv
 
-# GEMINI_API_MODEL = "gemini-2.5-flash"
-GEMINI_API_MODEL = "gemini-2.0-flash"
+GEMINI_API_MODEL = "gemini-2.5-flash"
+# GEMINI_API_MODEL = "gemini-2.0-flash"
+# GEMINI_API_MODEL = "gemini-2.5-flash-lite"
 
 # .envファイル読み込み
 load_dotenv()
@@ -61,7 +62,7 @@ def analyze_haipai_stream(haipai_data: dict):
         str: 解析結果
     """
 
-    """ストリーミングでGemini APIを呼び出すジェネレータ関数"""
+    # 牌譜データをJSON文字列に変換
     haipai_json = json.dumps(haipai_data, ensure_ascii=False, indent=2)
 
     prompt = f"""                                                                                   

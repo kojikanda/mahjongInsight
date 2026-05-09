@@ -126,8 +126,9 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
     ju = h["ju"] + 1
     # 本場数
     ben = h["ben"]
-    # ドラ
-    doras = " ".join(h["doras"])
+    # ドラ(ドラ表示牌を実際のドラに変換して出力)
+    current_indicators = list(h["doras"])
+    doras = " ".join(_dora_indicator_to_dora(d) for d in current_indicators)
     # 得点状況
     scores = h["scores"]
     lines.append(
@@ -136,7 +137,7 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
 
     # 配牌（東家=親だけ14枚、他は13枚）
     for seat_idx in range(4):
-        tiles = " ".join(h.get(f"tiles{seat_idx}", []))
+        tiles = " ".join(_tile_display(t) for t in h.get(f"tiles{seat_idx}", []))
         mark = "★" if seat_idx == my_seat else " "
         lines.append(f"  {mark} S{seat_idx} 配牌: {tiles}")
     lines.append("  " + "-" * 50)
@@ -151,12 +152,22 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
 
         # ツモ
         if name == ".lq.RecordDealTile":
-            seat, tile = d["seat"], d["tile"]
+            seat, tile = d["seat"], _tile_display(d["tile"])
+
+            # カン後のリンシャンツモで、dorasフィールドが存在し、件数が増えていたら新ドラを出力する
+            if "doras" in d and len(d["doras"]) > len(current_indicators):
+                # 増えたドラ表示牌を取り出す
+                new_indicators = d["doras"][len(current_indicators) :]
+                for indicator in new_indicators:
+                    new_dora = _dora_indicator_to_dora(indicator)
+                    lines.append(f"  [新ドラ: {new_dora}]")
+                current_indicators = list(d["doras"])
+
             lines.append(f"  {mark(seat)} S{seat} ツモ:{tile}")
 
         # 打牌
         elif name == ".lq.RecordDiscardTile":
-            seat, tile = d["seat"], d["tile"]
+            seat, tile = d["seat"], _tile_display(d["tile"])
             riichi = " 【リーチ宣言!】" if d.get("is_liqi") else ""
             tsumogiri = "(ツモ切)" if d.get("moqie") else ""
             lines.append(f"  {mark(seat)} S{seat} 打:{tile}{tsumogiri}{riichi}")
@@ -165,7 +176,7 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
         elif name == ".lq.RecordChiPengGang":
             seat = d["seat"]
             meld = MELD_TYPE.get(d["type"], f"鳴き{d['type']}")
-            tiles = " ".join(d["tiles"])
+            tiles = " ".join(_tile_display(t) for t in d["tiles"])
             from_seat = next((f for f in d["froms"] if f != seat), "?")
             lines.append(f"  {mark(seat)} S{seat} {meld}: {tiles} (S{from_seat}から)")
 
@@ -173,14 +184,14 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
         elif name == ".lq.RecordAnGangAddGang":
             seat = d["seat"]
             gang = GANG_TYPE.get(d["type"], "カン")
-            lines.append(f"  {mark(seat)} S{seat} {gang}: {d['tiles']}")
+            lines.append(f"  {mark(seat)} S{seat} {gang}: {_tile_display(d['tiles'])}")
 
         # 和了
         elif name == ".lq.RecordHule":
             for hule in d["hules"]:
                 seat = hule["seat"]
-                hand = " ".join(hule["hand"])
-                hu_tile = hule["hu_tile"]
+                hand = " ".join(_tile_display(t) for t in hule["hand"])
+                hu_tile = _tile_display(hule["hu_tile"])
                 win_type = "ツモ" if hule["zimo"] else "ロン"
                 riichi = " リーチ" if hule.get("liqi") else ""
                 points = hule.get("point_sum", hule.get("point_rong", "?"))
@@ -195,9 +206,51 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
             lines.append("  【流局】")
             for i, p in enumerate(d["players"]):
                 tenpai = "テンパイ" if p.get("tingpai") else "ノーテン"
-                hand = " ".join(p.get("hand", []))
+                hand = " ".join(_tile_display(t) for t in p.get("hand", []))
                 lines.append(f"    {mark(i)} S{i}: {tenpai} {hand}")
             if "delta_scores" in d:
                 lines.append(f"      スコア変動: {d['delta_scores']}")
 
     return lines
+
+
+def _dora_indicator_to_dora(indicator: str) -> str:
+    """
+    ドラ表示牌から実際のドラを返す。
+
+    Args:
+        indicator (str): ドラ表示牌の文字列
+
+    Returns:
+        str: 実際のドラの文字列
+    """
+
+    suit = indicator[-1]  # 'm', 'p', 's', 'z'
+    num = int(indicator[0])
+
+    if suit in ("m", "p", "s"):
+        # 赤五(0)は5として扱う
+        if num == 0:
+            num = 5
+        return f"{1 if num == 9 else num + 1}{suit}"
+
+    # z牌
+    if 1 <= num <= 4:  # 風牌: 4z(北)の次は1z(東)
+        return f"{1 if num == 4 else num + 1}z"
+    else:  # 三元牌: 7z(中)の次は5z(白)
+        return f"{5 if num == 7 else num + 1}z"
+
+
+def _tile_display(tile: str) -> str:
+    """
+    牌が赤ドラの場合、赤5と分かる表記に修正する。
+
+    Args:
+        tile (str): 牌の文字列
+
+    Returns:
+        str: 修正後の文字列
+    """
+    if tile[0] == "0":
+        return f"赤5{tile[1]}"  # 0m→赤5m, 0p→赤5p, 0s→赤5s
+    return tile

@@ -15,7 +15,7 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 
 - フロントエンド: React(Vite, shadcn/ui, TailwindCSS)
 - バックエンド: Python(FastAPI), Vector DB(Qdrant Cloud), Neo4j(Chroma Cloud or Qdrant Cloud)
-- AI: Google Gemini API (langchain-google-genai または google-generativeai)
+- AI: Google Gemini API (google-genai)
 
 2. 開発環境
 
@@ -71,6 +71,7 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 #### 完了した作業
 
 **環境構築**
+
 - uv 0.11.11 インストール
 - Python 3.13.13 インストール（uv 管理）
 - `backend/` ディレクトリを uv プロジェクトとして初期化
@@ -78,19 +79,20 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 
 **実装ファイル**
 
-| ファイル | 内容 |
-|---|---|
-| `backend/.env` | GEMINI_API_KEY を記載（git管理外） |
-| `backend/.env.example` | APIキーのテンプレート（git管理内） |
-| `backend/.gitignore` | .env, .venv 等を除外 |
-| `backend/models.py` | Pydantic モデル（AnalyzeRequest, AnalyzeResponse） |
-| `backend/services/__init__.py` | パッケージ定義（空ファイル） |
-| `backend/services/haipai_mock.py` | ダミー牌譜データを返すモック関数 |
-| `backend/services/gemini_service.py` | Gemini API 呼び出しロジック |
-| `backend/main.py` | FastAPI エントリーポイント（/analyze エンドポイント） |
-| `.vscode/launch.json` | VS Code デバッグ設定 |
+| ファイル                             | 内容                                                  |
+| ------------------------------------ | ----------------------------------------------------- |
+| `backend/.env`                       | GEMINI_API_KEY を記載（git管理外）                    |
+| `backend/.env.example`               | APIキーのテンプレート（git管理内）                    |
+| `backend/.gitignore`                 | .env, .venv 等を除外                                  |
+| `backend/models.py`                  | Pydantic モデル（AnalyzeRequest, AnalyzeResponse）    |
+| `backend/services/__init__.py`       | パッケージ定義（空ファイル）                          |
+| `backend/services/haipai_mock.py`    | ダミー牌譜データを返すモック関数                      |
+| `backend/services/gemini_service.py` | Gemini API 呼び出しロジック                           |
+| `backend/main.py`                    | FastAPI エントリーポイント（/analyze エンドポイント） |
+| `.vscode/launch.json`                | VS Code デバッグ設定                                  |
 
 **動作確認**
+
 - `/analyze` エンドポイント（POST）が正常に動作することを確認
 - Gemini API（gemini-2.5-flash）との連携を確認
 - Swagger UI（`http://localhost:8000/docs`）での動作確認済み
@@ -116,11 +118,86 @@ mahjongInsight/
         └── haipai_mock.py
 ```
 
+---
+
+### 第2回 (2026-05-09) — 牌譜パーサー実装・Gemini API連携
+
+#### 完了した作業
+
+**SDK移行**
+
+- `google-generativeai`（サポート終了）→ `google-genai` に移行
+- APIクライアントを `genai.Client` ベースの新しい書き方に変更
+- Gemini API を Tier1 課金に変更（無料枠は `gemini-2.5-flash` が1日20リクエストと少ないため）
+
+**依存パッケージ追加**
+
+- `python-multipart`（ファイルアップロード用）
+- `google-genai`（新 Gemini SDK）
+- `google-generativeai` を削除
+
+**実装ファイル**
+
+| ファイル                             | 変更内容                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| `backend/services/paifu_parser.py`   | 新規作成。牌譜JSONを戦術解析用コンパクトテキストに変換                    |
+| `backend/services/gemini_service.py` | SDK移行・`analyze_paifu_text()` / `analyze_paifu_text_stream()` 追加      |
+| `backend/main.py`                    | `/analyze/stream`・`/admin/uploadpaifu`・`/admin/uploadpaifu/stream` 追加 |
+
+**`paifu_parser.py` の主な仕様**
+
+- `extract_tactics(json_path, my_nickname)`: ファイルパスから変換
+- `extract_tactics_from_bytes(data, my_nickname)`: バイナリデータから変換（アップロード用）
+- ドラ表示牌 → 実際のドラに変換（例: `7p` → `8p`、`9m` → `1m`、`4z` → `1z`）
+- 赤ドラを明示表示（例: `0m` → `赤5m`）
+- カン後の新ドラを `[新ドラ: XX]` として出力
+- 自分のプレイヤーを `★` マークで強調
+
+**APIエンドポイント**
+
+| エンドポイント                   | 概要                                                  |
+| -------------------------------- | ----------------------------------------------------- |
+| `POST /analyze`                  | モックデータで解析（既存）                            |
+| `POST /analyze/stream`           | モックデータで解析・ストリーミング返却                |
+| `POST /admin/uploadpaifu`        | 牌譜JSONアップロード → Gemini解析                     |
+| `POST /admin/uploadpaifu/stream` | 牌譜JSONアップロード → Gemini解析・ストリーミング返却 |
+
+**動作確認**
+
+- `gemini-2.5-flash` で1半荘分（13局）の解析結果が返ることを確認
+- ドラ・赤ドラの表示が正しくなったことを確認
+
+#### 現在のプロジェクト構造
+
+```
+mahjongInsight/
+├── .vscode/
+│   └── launch.json
+├── CLAUDE.md
+├── docs/
+│   └── ref/
+│       ├── paifu_ref_data.json    （サンプル牌譜データ）
+│       └── paifu_compact.txt      （デバッグ用出力、git管理外）
+└── backend/
+    ├── .env                       （git管理外）
+    ├── .env.example
+    ├── .gitignore
+    ├── .venv/                     （git管理外）
+    ├── pyproject.toml
+    ├── main.py
+    ├── models.py
+    └── services/
+        ├── __init__.py
+        ├── gemini_service.py
+        ├── haipai_mock.py
+        └── paifu_parser.py
+```
+
 #### 次回以降の候補
 
+- Gemini APIのプロンプト改善（解析精度向上）
 - フロントエンド（React + Vite）の雛形作成
-- 実際の雀魂牌譜データの取得・パース
-- ストリーミングレスポンスの実装
 - Vector DB（ChromaDB）との連携
+- `/admin/uploadpaifu` への管理者認証追加（`X-Admin-Key` ヘッダー）
 
 ---
