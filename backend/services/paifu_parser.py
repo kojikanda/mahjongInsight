@@ -17,6 +17,8 @@ JIHAI_NAMES = {
     "6z": "發",
     "7z": "中",
 }
+# 自風
+SEAT_WINDS = ["東家", "南家", "西家", "北家"]
 
 
 def extract_tactics(json_path: str, my_nickname: str | None = None) -> str:
@@ -149,14 +151,16 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
     # 得点状況
     scores = h["scores"]
     lines.append(
-        f"=== {ROUND_WIND[chang]}{ju}局 {ben}本場 | ドラ:{doras} | スコア:{scores} ==="
+        f"=== {ROUND_WIND[chang]}{ju}局 {ben}本場 | ドラ:{doras} | スコア:{_scores_display(scores)} ==="
     )
 
     # 配牌（東家=親だけ14枚、他は13枚）
+    dealer_seat = h["ju"]
     for seat_idx in range(4):
         tiles = " ".join(_tile_display(t) for t in h.get(f"tiles{seat_idx}", []))
         mark = "★" if seat_idx == my_seat else " "
-        lines.append(f"  {mark} S{seat_idx} 配牌: {tiles}")
+        wind = SEAT_WINDS[(seat_idx - dealer_seat) % 4]
+        lines.append(f"  {mark} S{seat_idx}({wind}) 配牌: {tiles}")
     lines.append("  " + "-" * 50)
 
     # ゲームイベントを順番に処理
@@ -217,7 +221,7 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
                     f"  {mark(seat)} S{seat} 【和了】{win_type}{riichi}"
                     f" | 手牌:{hand} | 和了牌:{hu_tile} | {points}点"
                 )
-            lines.append(f"      スコア変動: {d['delta_scores']}")
+            lines.append(f"      スコア変動: {_scores_display(d['delta_scores'])}")
 
         # 流局
         elif name == ".lq.RecordNoTile":
@@ -226,8 +230,10 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
                 tenpai = "テンパイ" if p.get("tingpai") else "ノーテン"
                 hand = " ".join(_tile_display(t) for t in p.get("hand", []))
                 lines.append(f"    {mark(i)} S{i}: {tenpai} {hand}")
-            if "delta_scores" in d:
-                lines.append(f"      スコア変動: {d['delta_scores']}")
+            if d.get("scores"):
+                lines.append(
+                    f"      スコア変動: {_scores_display(d['scores'][0]['delta_scores'])}"
+                )
 
     return lines
 
@@ -264,13 +270,13 @@ def _dora_indicator_to_dora(indicator: str) -> str:
 
 def _tile_display(tile: str) -> str:
     """
-    牌が赤ドラの場合、赤5と分かる表記に修正する。
+    牌が赤ドラや字牌の場合、Gemini APIが理解できる表記に変換する。
 
     Args:
         tile (str): 牌の文字列
 
     Returns:
-        str: 修正後の文字列
+        str: 変換後の文字列
     """
     if tile[0] == "0":
         # 0m→赤5m, 0p→赤5p, 0s→赤5s
@@ -278,3 +284,16 @@ def _tile_display(tile: str) -> str:
     if tile in JIHAI_NAMES:
         return JIHAI_NAMES[tile]
     return tile
+
+
+def _scores_display(scores: list[int]) -> str:
+    """
+    配列のスコアを各プレイヤーをキーとした辞書式の表記に変換する。
+
+    Args:
+        scores (list[int]): 配列のスコア
+
+    Returns:
+        str: 変換後の文字列
+    """
+    return "{" + ", ".join(f"S{i}: {s}" for i, s in enumerate(scores)) + "}"
