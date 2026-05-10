@@ -71,7 +71,7 @@ async def upload_paifu(file: UploadFile = File(...)):
     tactics_text = extract_tactics_from_bytes(content, my_nickname=MY_NICKNAME)
 
     # for debug: 抽出した文字列データをファイルに出力
-    _output_str_to_text_file(tactics_text)
+    # _output_str_to_text_file(tactics_text)
 
     analysis = analyze_paifu_text(tactics_text)
     # analysis = "test"

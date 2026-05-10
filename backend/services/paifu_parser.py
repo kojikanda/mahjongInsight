@@ -1,9 +1,22 @@
 import json
 from pathlib import Path
 
+# 鳴きの種類
 MELD_TYPE = {0: "チー", 1: "ポン", 2: "明カン"}
+# 感の種類
 GANG_TYPE = {2: "暗カン", 3: "加カン"}
+# 場
 ROUND_WIND = {0: "東", 1: "南", 2: "西", 3: "北"}
+# 字牌の日本語名マッピング
+JIHAI_NAMES = {
+    "1z": "東",
+    "2z": "南",
+    "3z": "西",
+    "4z": "北",
+    "5z": "白",
+    "6z": "發",
+    "7z": "中",
+}
 
 
 def extract_tactics(json_path: str, my_nickname: str | None = None) -> str:
@@ -126,9 +139,13 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
     ju = h["ju"] + 1
     # 本場数
     ben = h["ben"]
-    # ドラ(ドラ表示牌を実際のドラに変換して出力)
+    # ドラ
     current_indicators = list(h["doras"])
-    doras = " ".join(_dora_indicator_to_dora(d) for d in current_indicators)
+    doras = " ".join(
+        # ドラ表示牌を実際のドラに変換
+        _tile_display(_dora_indicator_to_dora(d))
+        for d in current_indicators
+    )
     # 得点状況
     scores = h["scores"]
     lines.append(
@@ -159,7 +176,8 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
                 # 増えたドラ表示牌を取り出す
                 new_indicators = d["doras"][len(current_indicators) :]
                 for indicator in new_indicators:
-                    new_dora = _dora_indicator_to_dora(indicator)
+                    # ドラ表示牌を実際のドラに変換
+                    new_dora = _tile_display(_dora_indicator_to_dora(indicator))
                     lines.append(f"  [新ドラ: {new_dora}]")
                 current_indicators = list(d["doras"])
 
@@ -228,16 +246,19 @@ def _dora_indicator_to_dora(indicator: str) -> str:
     suit = indicator[-1]  # 'm', 'p', 's', 'z'
     num = int(indicator[0])
 
+    # 数牌
     if suit in ("m", "p", "s"):
         # 赤五(0)は5として扱う
         if num == 0:
             num = 5
         return f"{1 if num == 9 else num + 1}{suit}"
 
-    # z牌
-    if 1 <= num <= 4:  # 風牌: 4z(北)の次は1z(東)
+    # z牌(字牌)
+    if 1 <= num <= 4:
+        # 風牌: 4z(北)の次は1z(東)
         return f"{1 if num == 4 else num + 1}z"
-    else:  # 三元牌: 7z(中)の次は5z(白)
+    else:
+        # 三元牌: 7z(中)の次は5z(白)
         return f"{5 if num == 7 else num + 1}z"
 
 
@@ -252,5 +273,8 @@ def _tile_display(tile: str) -> str:
         str: 修正後の文字列
     """
     if tile[0] == "0":
-        return f"赤5{tile[1]}"  # 0m→赤5m, 0p→赤5p, 0s→赤5s
+        # 0m→赤5m, 0p→赤5p, 0s→赤5s
+        return f"赤5{tile[1]}"
+    if tile in JIHAI_NAMES:
+        return JIHAI_NAMES[tile]
     return tile
