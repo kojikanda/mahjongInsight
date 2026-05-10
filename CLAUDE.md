@@ -66,108 +66,30 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 
 ## 進捗状況
 
-### 第1回 (2026-05-07) — バックエンド MVP 完成
+### 環境構築
 
-#### 完了した作業
-
-**環境構築**
-
-- uv 0.11.11 インストール
-- Python 3.13.13 インストール（uv 管理）
+- uv 0.11.11 インストール、Python 3.13.13 インストール（uv 管理）
 - `backend/` ディレクトリを uv プロジェクトとして初期化
-- 依存パッケージ追加: fastapi, uvicorn, python-dotenv, google-generativeai, pydantic
-
-**実装ファイル**
-
-| ファイル                             | 内容                                                  |
-| ------------------------------------ | ----------------------------------------------------- |
-| `backend/.env`                       | GEMINI_API_KEY を記載（git管理外）                    |
-| `backend/.env.example`               | APIキーのテンプレート（git管理内）                    |
-| `backend/.gitignore`                 | .env, .venv 等を除外                                  |
-| `backend/models.py`                  | Pydantic モデル（AnalyzeRequest, AnalyzeResponse）    |
-| `backend/services/__init__.py`       | パッケージ定義（空ファイル）                          |
-| `backend/services/haipai_mock.py`    | ダミー牌譜データを返すモック関数                      |
-| `backend/services/gemini_service.py` | Gemini API 呼び出しロジック                           |
-| `backend/main.py`                    | FastAPI エントリーポイント（/analyze エンドポイント） |
-| `.vscode/launch.json`                | VS Code デバッグ設定                                  |
-
-**動作確認**
-
-- `/analyze` エンドポイント（POST）が正常に動作することを確認
-- Gemini API（gemini-2.5-flash）との連携を確認
-- Swagger UI（`http://localhost:8000/docs`）での動作確認済み
-
-#### 現在のプロジェクト構造
-
-```
-mahjongInsight/
-├── .vscode/
-│   └── launch.json
-├── CLAUDE.md
-└── backend/
-    ├── .env               （git管理外）
-    ├── .env.example
-    ├── .gitignore
-    ├── .venv/             （git管理外）
-    ├── pyproject.toml
-    ├── main.py
-    ├── models.py
-    └── services/
-        ├── __init__.py
-        ├── gemini_service.py
-        └── haipai_mock.py
-```
-
----
-
-### 第2回 (2026-05-09) — 牌譜パーサー実装・Gemini API連携
-
-#### 完了した作業
-
-**SDK移行**
-
+- 依存パッケージ: fastapi, uvicorn, python-dotenv, pydantic, python-multipart, google-genai
 - `google-generativeai`（サポート終了）→ `google-genai` に移行
-- APIクライアントを `genai.Client` ベースの新しい書き方に変更
 - Gemini API を Tier1 課金に変更（無料枠は `gemini-2.5-flash` が1日20リクエストと少ないため）
 
-**依存パッケージ追加**
+### ソース修正内容
 
-- `python-multipart`（ファイルアップロード用）
-- `google-genai`（新 Gemini SDK）
-- `google-generativeai` を削除
+- `main.py`: `/analyze`・`/analyze/stream`・`/admin/uploadpaifu`・`/admin/uploadpaifu/stream` エンドポイントを実装
+- `services/gemini_service.py`: `genai.Client` ベースに移行、`analyze_paifu_text()` / `analyze_paifu_text_stream()` を実装
+- `services/paifu_parser.py` を新規作成（牌譜JSONを戦術解析用コンパクトテキストに変換）:
+  - ドラ表示牌 → 実際のドラに変換（例: `7p`→`8p`、`9m`→`1m`、`4z`→`1z`）
+  - 赤ドラを明示表示（例: `0m`→`赤5m`）
+  - 字牌を日本語名で表示（例: `1z`→`東`、`5z`→`白`）
+  - カン後の新ドラを `[新ドラ: XX]` として出力
+  - 自分のプレイヤーを `★` マークで強調
+  - 配牌行に各プレイヤーの自風を付与（例: `S0(東家)`）
+  - スコア・スコア変動をプレイヤー別辞書形式で出力（例: `{S0: 21400, S1: 25000, ...}`）
+  - 各イベント行に巡目を付与（ツモ・打牌・ポン/チー/明カン でカウント、親の初期値は1）
+- `services/gemini_service.py` のプロンプトに牌の表記凡例を追加、押し引き基準の説明を具体化
 
-**実装ファイル**
-
-| ファイル                             | 変更内容                                                                  |
-| ------------------------------------ | ------------------------------------------------------------------------- |
-| `backend/services/paifu_parser.py`   | 新規作成。牌譜JSONを戦術解析用コンパクトテキストに変換                    |
-| `backend/services/gemini_service.py` | SDK移行・`analyze_paifu_text()` / `analyze_paifu_text_stream()` 追加      |
-| `backend/main.py`                    | `/analyze/stream`・`/admin/uploadpaifu`・`/admin/uploadpaifu/stream` 追加 |
-
-**`paifu_parser.py` の主な仕様**
-
-- `extract_tactics(json_path, my_nickname)`: ファイルパスから変換
-- `extract_tactics_from_bytes(data, my_nickname)`: バイナリデータから変換（アップロード用）
-- ドラ表示牌 → 実際のドラに変換（例: `7p` → `8p`、`9m` → `1m`、`4z` → `1z`）
-- 赤ドラを明示表示（例: `0m` → `赤5m`）
-- カン後の新ドラを `[新ドラ: XX]` として出力
-- 自分のプレイヤーを `★` マークで強調
-
-**APIエンドポイント**
-
-| エンドポイント                   | 概要                                                  |
-| -------------------------------- | ----------------------------------------------------- |
-| `POST /analyze`                  | モックデータで解析（既存）                            |
-| `POST /analyze/stream`           | モックデータで解析・ストリーミング返却                |
-| `POST /admin/uploadpaifu`        | 牌譜JSONアップロード → Gemini解析                     |
-| `POST /admin/uploadpaifu/stream` | 牌譜JSONアップロード → Gemini解析・ストリーミング返却 |
-
-**動作確認**
-
-- `gemini-2.5-flash` で1半荘分（13局）の解析結果が返ることを確認
-- ドラ・赤ドラの表示が正しくなったことを確認
-
-#### 現在のプロジェクト構造
+### 現在のプロジェクト構造
 
 ```
 mahjongInsight/
@@ -193,7 +115,7 @@ mahjongInsight/
         └── paifu_parser.py
 ```
 
-#### 次回以降の候補
+### 次回以降の候補
 
 - Gemini APIのプロンプト改善（解析精度向上）
 - フロントエンド（React + Vite）の雛形作成
