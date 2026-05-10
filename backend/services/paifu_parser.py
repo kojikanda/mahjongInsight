@@ -167,13 +167,18 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
     def mark(seat: int) -> str:
         return "★" if seat == my_seat else " "
 
+    # 巡目(親は最初のツモが無いので、最初から1)
+    turn_counts = [1 if i == dealer_seat else 0 for i in range(4)]
+
     for ev in events[1:]:
         name = ev["name"]
         d = ev["data"]
 
-        # ツモ
+        # ツモ(カンによるリンシャン牌ツモを含む)
         if name == ".lq.RecordDealTile":
             seat, tile = d["seat"], _tile_display(d["tile"])
+            # 巡目インクリメント
+            turn_counts[seat] += 1
 
             # カン後のリンシャンツモで、dorasフィールドが存在し、件数が増えていたら新ドラを出力する
             if "doras" in d and len(d["doras"]) > len(current_indicators):
@@ -185,24 +190,32 @@ def _format_round(events: list[dict], my_seat: int | None) -> list[str]:
                     lines.append(f"  [新ドラ: {new_dora}]")
                 current_indicators = list(d["doras"])
 
-            lines.append(f"  {mark(seat)} S{seat} ツモ:{tile}")
+            lines.append(f"  {mark(seat)} S{seat}({turn_counts[seat]}巡目) ツモ:{tile}")
 
         # 打牌
         elif name == ".lq.RecordDiscardTile":
-            seat, tile = d["seat"], _tile_display(d["tile"])
+            seat = d["seat"]
+            tile = _tile_display(d["tile"])
             riichi = " 【リーチ宣言!】" if d.get("is_liqi") else ""
             tsumogiri = "(ツモ切)" if d.get("moqie") else ""
-            lines.append(f"  {mark(seat)} S{seat} 打:{tile}{tsumogiri}{riichi}")
+            lines.append(
+                f"  {mark(seat)} S{seat}({turn_counts[seat]}巡目) 打:{tile}{tsumogiri}{riichi}"
+            )
 
-        # 鳴き(ポン・チー)
+        # 鳴き(ポン・チー・明カン)
         elif name == ".lq.RecordChiPengGang":
             seat = d["seat"]
+            # 巡目インクリメント
+            turn_counts[seat] += 1
+
             meld = MELD_TYPE.get(d["type"], f"鳴き{d['type']}")
             tiles = " ".join(_tile_display(t) for t in d["tiles"])
             from_seat = next((f for f in d["froms"] if f != seat), "?")
-            lines.append(f"  {mark(seat)} S{seat} {meld}: {tiles} (S{from_seat}から)")
+            lines.append(
+                f"  {mark(seat)} S{seat}({turn_counts[seat]}巡目) {meld}: {tiles} (S{from_seat}から)"
+            )
 
-        # カン
+        # カン(加カン・暗カン)
         elif name == ".lq.RecordAnGangAddGang":
             seat = d["seat"]
             gang = GANG_TYPE.get(d["type"], "カン")
