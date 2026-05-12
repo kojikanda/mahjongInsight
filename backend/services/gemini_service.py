@@ -5,8 +5,8 @@ from google import genai
 from dotenv import load_dotenv
 
 GEMINI_API_MODEL = "gemini-2.5-flash"
-# GEMINI_API_MODEL = "gemini-2.0-flash"
 # GEMINI_API_MODEL = "gemini-2.5-flash-lite"
+# GEMINI_API_MODEL = "gemini-2.5-pro"
 
 # .envファイル読み込み
 load_dotenv()

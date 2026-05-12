@@ -61,6 +61,119 @@ for m in client.models.list():
 
 <br>
 
+# 麻雀戦術解析について
+
+## ■ 課題
+
+雀魂の牌譜をGemini APIに読み込ませて解析させたが、想定以上に解析の精度が低い。<br>
+1局の牌譜データをgemini-2.5-proに解析させるだけでも以下の課題が出てきた。
+
+- 現物が理解できていない。
+- リーチしているプレイヤーを理解できていない。
+- ドラとのくっつきをかなり軽視している。
+- 孤立牌が理解できていない。
+- 安全重視の考え方が理解できていない。
+
+このように基本的なことが理解・解釈できておらず、このままGemini APIに解析させるのは時間の無駄のような気がしたので、他の方法を模索した。
+
+## ■ ChatGPTに相談
+
+ChatGPTに他に麻雀解析のAIはないかと尋ねると、以下の回答が返ってきた。
+
+```
+あります。しかも、正直なところ「Geminiに直接牌譜を読ませて戦術判断させる」のは、かなり難しい部類です。
+
+理由は、麻雀が
+
+不完全情報ゲーム
+多人数ゲーム
+局収支と半荘収支がズレる
+打点・速度・放銃率のトレードオフが複雑
+“未来のツモ”を仮定した期待値計算が必要
+
+という、LLMが苦手な要素の塊だからです。
+
+なので、今の麻雀AI界隈では、
+「LLM単体で解析」ではなく、
+
+専用麻雀AIで局面評価
+その結果をLLMで自然言語化
+
+という2段構成が主流です。
+
+今の構成だと、
+
+>Geminiに直接「この打牌はなぜ悪い？」を考えさせている
+
+可能性がありますが、ここがボトルネックかもしれません。
+```
+
+ChatGPTは、代わりの候補として「Mortal」を挙げてきた。<br>
+どうも、MortalはGitHubに実装が公開されており、これが使える模様。<br>
+つまり、以下のようにMortalとGemini APIの両方を使うことで、今までより格段に正確な解析ができるという判断。
+
+```
+Mortal
+↓
+打牌期待値
+↓
+構造化JSON
+↓
+Geminiで説明生成
+↓
+ナレッジグラフ化
+```
+
+## ■ Mortal導入
+
+### ◯Mortalを直接使えるか調査
+
+#### Claude Codeの検討結果
+
+致命的な問題：Mortal モデルの重みが非公開。
+
+Mortal の作者が公式 Gist で以下を明言しています：
+
+```
+「現時点でモデルの重みを公開する予定はない」
+理由：オンライン麻雀でのチート防止
+```
+
+リリースページにもビルド済みバイナリなし。Hugging Face等にも存在しない。<br>
+これにより、「Mortal をローカルで実行して打牌期待値を取得する」という当初の実装は現時点では不可能です。
+
+### ◯Akagiの仕組み利用
+
+これに対し、Akagi(https://github.com/shinkuan/Akagi)という牌譜解析ツールの仕組みが使えるとのこと。<br>
+Akagiは内部で、Mortalのモデルデータを使用しており、Akagiのリリースzipにplaceholderモデルが入っている。<br>
+プロトタイプの確認としては、このplaceholderモデルが使える。<br>
+また、より精度の高いモデルは、AkagiのDiscordでダウンロードできるようになっており、Discordのコミュニティに参加すれば、誰でも取得可能とのこと。
+
+### ◯環境構築
+
+#### 環境構築の全体像
+
+| 項目              | 内容                                    | 備考                         |
+| ----------------- | --------------------------------------- | ---------------------------- |
+| Rust toolchain    | rustup でインストール                   | libriichi のビルドに必須     |
+| libriichi.so      | Mortal リポジトリを clone → cargo build | Python バインディング本体    |
+| Python 3.12       | conda で管理                            | Mortal が Python 3.12 指定   |
+| PyTorch           | pip でインストール                      | CPU 版で可（GPU あれば高速） |
+| mortal.pth        | Akagi リリース zip から取得             | placeholder モデル           |
+| Mortal スクリプト | GitHub から clone                       | mortal.py / model.py 等      |
+
+#### ライセンス整理
+
+| ツール             | ライセンス                | 今回の利用                                         |
+| ------------------ | ------------------------- | -------------------------------------------------- |
+| Mortal / libriichi | AGPL-3.0                  | サブプロセス呼び出し → 問題なし                    |
+| Akagi              | AGPL-3.0 + Commons Clause | コードをコピーしない、変換ロジックを参考に独自実装 |
+| mjai-reviewer      | Apache-2.0                | 参考のみ                                           |
+
+---
+
+<br>
+
 # Pythonに関すること
 
 ## ■ インタプリタの指定
@@ -96,6 +209,48 @@ curl -X POST http://localhost:8000/admin/uploadpaifu/stream \
 -F "file=@docs/ref/paifu_ref_data.json" \
 --no-buffer
 ```
+
+## ■ サブプロセスの起動
+
+```python
+proc = subprocess.Popen(
+        [str(MORTAL_VENV), str(MORTAL_PY), str(player_seat)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        cwd=str(MORTAL_DIR),
+        text=True,
+        encoding="utf-8",
+    )
+```
+
+- パラメータ: args[0]
+  - 値: MORTAL_VENV
+  - 説明: 実行するPythonインタープリタのパス（mortal_engine専用venv）
+- パラメータ: args[1]
+  - 値: MORTAL_PY
+  - 説明: 実行するスクリプト（mortal.py）のパス
+- パラメータ: args[2]
+  - 値: player_seat
+  - 説明: mortal.py に渡すコマンドライン引数（解析対象の座席番号）
+- パラメータ: stdin=PIPE
+  - 値: -
+  - 説明: 親プロセスから子プロセスへデータを書き込めるようにする（mjai JSONLを1行ずつ送る）
+- パラメータ: stdout=PIPE
+  - 値: -
+  - 説明: 子プロセスからの出力を親プロセスで読み取れるようにする（Mortalのレスポンスを受け取る）
+- パラメータ: stderr=DEVNULL
+  - 値: -
+  - 説明: 子プロセスのエラー出力を破棄する（mortal.pyのログを無視）
+- パラメータ: cwd=MORTAL_DIR
+  - 値: -
+  - 説明: 子プロセスのカレントディレクトリを mortal/ に設定する（mortal.pth や config.toml の相対パス解決のため）
+- パラメータ: text=True
+  - 値: -
+  - 説明: stdin/stdout をバイト列ではなく文字列として扱う
+- パラメータ: encoding="utf-8"
+  - 値: -
+  - 説明: text=True 時の文字コード指定
 
 # Fast APIに関すること
 

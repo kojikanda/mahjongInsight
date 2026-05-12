@@ -73,11 +73,28 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 - 依存パッケージ: fastapi, uvicorn, python-dotenv, pydantic, python-multipart, google-genai
 - `google-generativeai`（サポート終了）→ `google-genai` に移行
 - Gemini API を Tier1 課金に変更（無料枠は `gemini-2.5-flash` が1日20リクエストと少ないため）
+- `.vscode/settings.json` を追加（`python.defaultInterpreterPath` を `backend/.venv` に設定）
+
+#### Mortal 環境構築
+
+- `backend/mortal_engine/` に [Equim-chan/Mortal](https://github.com/Equim-chan/Mortal) を git clone
+- `libriichi` を Rust ソースからビルド（`cargo build -p libriichi --lib --release`）
+  - 出力: `target/release/libriichi.dylib` → `mortal/libriichi.so` にコピー
+- `backend/mortal_engine/.venv/` を Python 3.12 で作成（`uv venv --python 3.12`）
+  - インストール済みパッケージ: `torch`（CPU版 2.2.2）、`numpy<2`（1.26.4）、`tqdm`、`toml`、`tensorboard`
+- `mortal/config.toml` を新規作成（version=4, num_blocks=5, conv_channels=32）
+- `mortal/gen_placeholder.py` を新規作成・実行してプレースホルダーモデル `mortal.pth` を生成
+  - Brain（ResNet）+ DQN + GRP の重みをランダム初期化して保存
+  - 実モデル重みは非公開のため、パイプライン検証用として使用
 
 ### ソース修正内容
 
 - `main.py`: `/analyze`・`/analyze/stream`・`/admin/uploadpaifu`・`/admin/uploadpaifu/stream` エンドポイントを実装
+- `main.py`: `/convert/mjai`・`/analyze/mortal` エンドポイントを追加
+  - `/convert/mjai`: 牌譜JSONをmjai JSONL形式に変換し `docs/ref/paifu_mjai.jsonl` に保存
+  - `/analyze/mortal`: mjai JSONLをMortalで解析し、各打牌ターンのQ-valueを返す
 - `services/gemini_service.py`: `genai.Client` ベースに移行、`analyze_paifu_text()` / `analyze_paifu_text_stream()` を実装
+- `services/gemini_service.py` のプロンプトに牌の表記凡例を追加、押し引き基準の説明を具体化
 - `services/paifu_parser.py` を新規作成（牌譜JSONを戦術解析用コンパクトテキストに変換）:
   - ドラ表示牌 → 実際のドラに変換（例: `7p`→`8p`、`9m`→`1m`、`4z`→`1z`）
   - 赤ドラを明示表示（例: `0m`→`赤5m`）
@@ -87,19 +104,35 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
   - 配牌行に各プレイヤーの自風を付与（例: `S0(東家)`）
   - スコア・スコア変動をプレイヤー別辞書形式で出力（例: `{S0: 21400, S1: 25000, ...}`）
   - 各イベント行に巡目を付与（ツモ・打牌・ポン/チー/明カン でカウント、親の初期値は1）
-- `services/gemini_service.py` のプロンプトに牌の表記凡例を追加、押し引き基準の説明を具体化
+- `services/paifu_to_mjai.py` を新規作成（雀魂牌譜JSON → mjai JSONL変換）:
+  - 牌表記変換: `0m`→`5mr`、`1z`→`E` など
+  - 全局を変換（start_game → 局ごとのイベント → end_game）
+  - player_seat 以外のツモ牌は `"?"` でマスク
+  - リーチ宣言: `reach` → `dahai` → `reach_accepted` の順で出力
+    - 次イベントがロン（RecordHule）の場合は `reach_accepted` を出力しない（`_next_event_is_ron()` で判定）
+  - `hora` に `deltas`（スコア変動）フィールドを付与（GRP処理に必要）
+  - `ryukyoku` に `deltas` フィールドを付与
+- `services/mortal_service.py` を新規作成（Mortal サブプロセス経由でQ-value解析）:
+  - `MORTAL_REVIEW_MODE=1` 環境変数で起動（全イベントにレスポンスを返させるため）
+  - 1行送信 → 1行受信のループで mjai JSONL を処理
+  - `response.type == "dahai"` かつ `actor == player_seat` のレスポンスからQ-valueを抽出
+  - `_find_player_action(all_lines, current_idx, player_seat)`: インデックスで検索（文字列重複問題を回避）
+  - 戻り値: 局・巡目・実打牌・Mortal推奨打牌・EV・全有効アクション一覧
 
 ### 現在のプロジェクト構造
 
 ```
 mahjongInsight/
 ├── .vscode/
-│   └── launch.json
+│   ├── launch.json
+│   └── settings.json              （Python インタープリタ設定）
 ├── CLAUDE.md
 ├── docs/
 │   └── ref/
 │       ├── paifu_ref_data.json    （サンプル牌譜データ）
-│       └── paifu_compact.txt      （デバッグ用出力、git管理外）
+│       ├── paifu_data_202605061736.json  （テスト用牌譜データ）
+│       ├── paifu_compact.txt      （デバッグ用出力、git管理外）
+│       └── paifu_mjai.jsonl       （mjai変換結果、git管理外）
 └── backend/
     ├── .env                       （git管理外）
     ├── .env.example
@@ -108,16 +141,29 @@ mahjongInsight/
     ├── pyproject.toml
     ├── main.py
     ├── models.py
+    ├── mortal_engine/             （Mortal リポジトリ）
+    │   ├── .venv/                 （Python 3.12 専用 venv、git管理外）
+    │   └── mortal/
+    │       ├── mortal.py
+    │       ├── model.py
+    │       ├── libriichi.so       （Rust ビルド済み）
+    │       ├── mortal.pth         （プレースホルダーモデル）
+    │       ├── config.toml
+    │       └── gen_placeholder.py （mortal.pth 再生成スクリプト）
     └── services/
         ├── __init__.py
         ├── gemini_service.py
         ├── haipai_mock.py
-        └── paifu_parser.py
+        ├── paifu_parser.py
+        ├── paifu_to_mjai.py       （新規）
+        └── mortal_service.py      （新規）
 ```
 
 ### 次回以降の候補
 
-- Gemini APIのプロンプト改善（解析精度向上）
+- Mortal の実モデル重みの取得（Akagi の Discord 等から入手し `mortal.pth` を差し替え）
+- Gemini API との連携（Mortal の Q-value → Gemini で自然言語の説明を生成）
+- ナレッジグラフ化（Neo4j AuraDB との連携）
 - フロントエンド（React + Vite）の雛形作成
 - Vector DB（ChromaDB）との連携
 - `/admin/uploadpaifu` への管理者認証追加（`X-Admin-Key` ヘッダー）
