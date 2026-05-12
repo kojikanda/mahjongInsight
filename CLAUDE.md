@@ -74,6 +74,8 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 - `google-generativeai`（サポート終了）→ `google-genai` に移行
 - Gemini API を Tier1 課金に変更（無料枠は `gemini-2.5-flash` が1日20リクエストと少ないため）
 - `.vscode/settings.json` を追加（`python.defaultInterpreterPath` を `backend/.venv` に設定）
+- `.vscode/launch.json` に `--reload-exclude mortal_engine` を追加（`mortal_engine/target/` の大量ファイルによる CPU 高負荷を防ぐため）
+- `watchfiles` を追加（`uv add watchfiles`）: `--reload-exclude` を有効にするために必要
 
 #### Mortal 環境構築
 
