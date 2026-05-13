@@ -89,6 +89,39 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
   - Brain（ResNet）+ DQN + GRP の重みをランダム初期化して保存
   - 実モデル重みは非公開のため、パイプライン検証用として使用
 
+#### Mortal v4-best モデル差し替え（2026-05-13）
+
+Akagi の Discord から入手した v4-best モデルに差し替えた。入手ファイルは `docs/ref_mortal/`（git管理外）に格納。
+
+**差し替えたファイル（`backend/mortal_engine/mortal/` 配下）：**
+
+- `model.py` → v4-best 版に差し替え（`Brain(version=4, conv_channels=192, num_blocks=40)`）
+- `mortal.pth` → v4-best の実モデル重みに差し替え
+- `libriichi.so` → **環境によって対応が異なる（重要）**
+  - **macOS の場合**: v4-best 同梱の `libriichi.so` は Linux (ELF) 形式のため使用不可。Rust ソースから自前ビルドが必要
+    ```bash
+    cd backend/mortal_engine
+    cargo build -p libriichi --lib --release
+    cp target/release/libriichi.dylib mortal/libriichi.so
+    ```
+    ※ Rust 未インストールの場合は `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh` でインストール
+  - **Linux の場合**: v4-best 同梱の `libriichi.so`（ELF形式）がそのまま使用可能
+
+**`mortal.py` の修正が必要（本番環境でも同様）：**
+
+v4-best の `mortal.pth` は numpy スカラー型を含むため、`weights_only=True` では読み込みエラーになる。以下2箇所を `weights_only=False` に変更する。
+
+- 30行目（Brain/DQN の読み込み）:
+  ```python
+  state = torch.load(config['control']['state_file'], weights_only=False, map_location=torch.device('cpu'))
+  ```
+- 83行目（GRP の読み込み）:
+  ```python
+  grp_state = torch.load(config["grp"]["state_file"], weights_only=False, map_location=torch.device('cpu'))
+  ```
+
+また、v4-best の `mortal.pth` には GRP 重みが含まれていないため、GRP 読み込みを try/except で囲み、失敗時は `grp = None` にする（79〜107行目）。
+
 ### ソース修正内容
 
 - `main.py`: `/analyze`・`/analyze/stream`・`/admin/uploadpaifu`・`/admin/uploadpaifu/stream` エンドポイントを実装
@@ -149,7 +182,7 @@ mahjongInsight/
     │       ├── mortal.py
     │       ├── model.py
     │       ├── libriichi.so       （Rust ビルド済み）
-    │       ├── mortal.pth         （プレースホルダーモデル）
+    │       ├── mortal.pth         （v4-best 実モデル、git管理外）
     │       ├── config.toml
     │       └── gen_placeholder.py （mortal.pth 再生成スクリプト）
     └── services/
@@ -163,7 +196,6 @@ mahjongInsight/
 
 ### 次回以降の候補
 
-- Mortal の実モデル重みの取得（Akagi の Discord 等から入手し `mortal.pth` を差し替え）
 - Gemini API との連携（Mortal の Q-value → Gemini で自然言語の説明を生成）
 - ナレッジグラフ化（Neo4j AuraDB との連携）
 - フロントエンド（React + Vite）の雛形作成
