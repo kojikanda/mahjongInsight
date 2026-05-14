@@ -153,6 +153,10 @@ v4-best の `mortal.pth` は numpy スカラー型を含むため、`weights_onl
   - `response.type == "dahai"` かつ `actor == player_seat` のレスポンスからQ-valueを抽出
   - `_find_player_action(all_lines, current_idx, player_seat)`: インデックスで検索（文字列重複問題を回避）
   - 戻り値: 局・巡目・実打牌・Mortal推奨打牌・EV・全有効アクション一覧
+  - **バグ修正**: `_ACTION_NAMES_4P` のタイルインデックス順序を Rust の `libriichi` に合わせて修正
+    - 修正前: 赤ドラ（5mr/5pr/5sr）を各スーツの5の直後に挿入（例: 1m〜5m, **5mr**, 6m〜9m）
+    - 修正後: 赤ドラを末尾にまとめる（1m〜9m, 1p〜9p, 1s〜9s, E〜C, **5mr, 5pr, 5sr**）
+    - この順序ズレにより `player_ev` が null になる・`mortal_action` と `mortal_ev` が一致しない問題が発生していた
 
 ### 現在のプロジェクト構造
 
