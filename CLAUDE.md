@@ -62,6 +62,49 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 
 - 対話機能: 「自分が過去に放銃した時の共通点は？」と聞くと、過去の牌譜データから「發をポンされている時の押しが甘い」といった傾向を回答させます。
 
+### ■スキーマ案(第一弾)
+
+```
+(Situation) → 状況
+- id(日時＋プレイヤー＋局＋巡目)
+- wind(場風)
+- honba(本場)
+- turn(巡目)
+- score(得点状況)
+- dora(ドラ)
+- oppenent_reach_count(リーチを行っている相手の数)
+
+(Tag) → タグ
+- type(状態を表す文字列。'OYA', 'REACH')
+
+(Action) → アクション
+- type(打牌、ポン、チー、カン、リーチなどのアクションの種類)
+- tile(プレイヤーがアクションを行った牌)
+
+(Comparison) → プレイヤーの選択とMortalの選択の評価差
+- ev_diff(EV差)
+
+(Evaluation) → Mortalの評価
+- ev(Mortalが出したEV値)
+- is_best(Mortalの最善手か)
+
+(Tactic) → 戦術
+- name('押し引き'、'牌効率'、'打点'など)
+
+(Explanation) → Gemini APIの説明
+- text(Gemini APIが判断した結果の文字列)
+
+(Situation) --[:HAS_TAG]--> (Tag)
+(Situation) --[:CHOSE]--> (Action) → プレイヤーのアクション
+(Action) -->[:COMPARED_TO(ev_diff)]-->(Comparison) → プレイヤーのアクションに対するMortalのアクションとの評価差
+(Comparison) -->[:TARGET]-->(Action) → Comparisonに対応するMortalのアクション
+(Comparison) -->[:HAS_EXPLANATION]--> (Explanation) → 評価差に対するGemini APIの説明
+(Action) --[:EVALUATED_BY]--> (Evaluation) → アクションに対するMortalの評価
+
+(Action) -->[:HAS_PRIMARY_TACTIC]--> (Tactic) → Pythonの処理で設定するTactic
+(Action) -->[:HAS_SECONDARY_TACTIC]--> (Tactic) → Gemini APIの解析で設定するTactic
+```
+
 ---
 
 ## 進捗状況
