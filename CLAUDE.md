@@ -86,7 +86,6 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 
 (Evaluation) → Mortalの評価
 - ev(Mortalが出したEV値)
-- is_best(Mortalの最善手か)
 
 (Tactic) → 戦術
 - name('押し引き'、'牌効率'、'打点'など)
@@ -96,10 +95,11 @@ React + FastAPI + Python を使用した「麻雀戦術ナレッジグラフア�
 
 (Situation) --[:HAS_TAG]--> (Tag)
 (Situation) --[:CHOSE]--> (Action) → プレイヤーのアクション
-(Action) -->[:COMPARED_TO(ev_diff)]-->(Comparison) → プレイヤーのアクションに対するMortalのアクションとの評価差
+(Action) -->[:COMPARED_WITH]-->(Comparison) → プレイヤーのアクションに対するMortalのアクションとの評価差
 (Comparison) -->[:TARGET]-->(Action) → Comparisonに対応するMortalのアクション
 (Comparison) -->[:HAS_EXPLANATION]--> (Explanation) → 評価差に対するGemini APIの説明
-(Action) --[:EVALUATED_BY]--> (Evaluation) → アクションに対するMortalの評価
+(Action) --[:BEST_ACTION]--> (Evaluation) → アクションに対するMortalの最善手の評価
+(Action) --[:EVALUATED_BY]--> (Evaluation) → アクションに対するMortalの最善手以外の評価
 
 (Action) -->[:HAS_PRIMARY_TACTIC]--> (Tactic) → Pythonの処理で設定するTactic
 (Action) -->[:HAS_SECONDARY_TACTIC]--> (Tactic) → Gemini APIの解析で設定するTactic
